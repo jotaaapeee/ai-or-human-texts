@@ -1,3 +1,9 @@
+convert.py
+data_for_preprocessing.csv
+model_training_dataset.csv
+model_training_dataset.parquet
+Projeto.ows
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
