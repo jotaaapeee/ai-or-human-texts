@@ -1,0 +1,25 @@
+# ============================================================
+# requirements.txt - Detector de Texto: IA vs Humano
+# ============================================================
+# Instalar com:
+#   python -m venv venv
+#   source venv/bin/activate        (Linux/Mac)
+#   venv\Scripts\activate           (Windows)
+#   pip install -r requirements.txt
+# ============================================================
+
+# manipulação de dados
+pandas>=2.0.0
+numpy>=1.24.0
+
+# machine learning
+scikit-learn>=1.3.0
+
+# visualização
+matplotlib>=3.7.0
+
+# leitura eficiente de Parquet
+pyarrow>=12.0.0
+
+# serialização do modelo (já vem com Python, mas listado por clareza)
+# pickle - built-in, não precisa instalar
