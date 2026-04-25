@@ -114,7 +114,7 @@ def carregarDados(nomeArquivo):
         print("[DICA] Instale o engine: pip install pyarrow")
         return None
     
-def montarDataset(df, prefixo_group=""):
+def montarDataset(df):
     """
     Monta o dataset long-format mantendo o group_id original
     para evitar vazamento entre splits.
