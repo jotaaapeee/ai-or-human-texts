@@ -114,9 +114,21 @@ def carregarDados(nomeArquivo):
         print("[DICA] Instale o engine: pip install pyarrow")
         return None
     
-def montarDataset(df):
-    humanos = pd.DataFrame({"text": df["human_text"], "author": "Human"})
-    ias = pd.DataFrame({"text": df["ai_text"], "author": "AI"})
+def montarDataset(df, prefixo_group=""):
+    """
+    Monta o dataset long-format mantendo o group_id original
+    para evitar vazamento entre splits.
+    """
+    humanos = pd.DataFrame({
+        "text":     df["human_text"].values,
+        "author":   "Human",
+        "group_id": df.index  # <<< mantém o par de origem
+    })
+    ias = pd.DataFrame({
+        "text":     df["ai_text"].values,
+        "author":   "AI",
+        "group_id": df.index  # <<< mesmo par = mesmo grupo
+    })
     dados = pd.concat([humanos, ias], ignore_index=True)
     return dados.sample(frac=1, random_state=42).reset_index(drop=True)
 
@@ -129,43 +141,29 @@ def limparTexto(texto):
     """
     if not isinstance(texto, str):
         return ""
+    texto = texto.strip()
     texto = texto.lower()
     texto = re.sub(r"http\S+|www\S+", "", texto) # remove URLs
     texto = re.sub(r"[^a-záéíóúãõâêîôûàèìòùç\s]", " ", texto) # só letras
     texto = re.sub(r"\s+", " ", texto).strip() # espaços extras
     return texto
 
-def prepararDados(dados):
-    """Limpeza geral do DataFrame (colunas: text, author)."""
-    print("\n --- Infos Iniciais ---")
-    print(dados.info())
-    print(dados.head())
-
-    print("Valores nulos por coluna:")
-    print(dados.isnull().sum())
-
-    # remove linhas sem texto ou sem label (segurança)
+def prepararDados(dados, le=None):
+    dados = dados.copy()
     dados.dropna(subset=["text", "author"], inplace=True)
-
-    # limpeza do texto
     dados["text_limpo"] = dados["text"].apply(limparTexto)
-
-    # remove textos que ficaram vazios após limpeza
     dados = dados[dados["text_limpo"].str.strip() != ""]
 
-    # LabelEncoder: AI=0, Human=1 (ordem alfabética)
-    le = LabelEncoder()
-    dados = dados.copy()
-    dados["label"] = le.fit_transform(dados["author"])
+    if le is None:
+        le = LabelEncoder()
+        dados["label"] = le.fit_transform(dados["author"])
+        print(f"\n[INFO] Mapeamento LabelEncoder:")
+        for i, c in enumerate(le.classes_):
+            print(f"  {c!r} → {i}")
+    else:
+        dados["label"] = le.transform(dados["author"])
 
-    print(f"\n[OK] Dados após limpeza: {dados.shape[0]} registros")
-    print(f"Distribuição de classes:\n{dados['author'].value_counts()}")
-
-    # IMPORTANTE: confirma o mapeamento real gerado pelo LabelEncoder
-    print(f"\n[INFO] Mapeamento do LabelEncoder (ordem alfabética):")
-    for i, classe in enumerate(le.classes_):
-        print(f"  {classe!r} → {i}")
-
+    print(f"[OK] {dados.shape[0]} registros | classes: {dados['author'].value_counts().to_dict()}")
     return dados, le
 
 def visualizarDados(dados):
@@ -222,29 +220,29 @@ def extrairFeatures(dados):
 def separarDados(df_original):
     """
     Divide em treino (70%), validação (15%) e teste (15%)
-    garantindo que textos da mesma linha (mesma instrução)
-    não vazem entre os conjuntos.
+    ANTES de montar o long-format, usando o índice da linha
+    (= par human/ai) como grupo real.
     """
     print("\n[INFO] Separando dados em treino/validação/teste...")
 
-    groups = df_original.index
+    # grupos = linhas do parquet (pares human/ai)
+    groups = np.arange(len(df_original))
 
-    gss = GroupShuffleSplit(test_size=0.3, random_state=42)
+    gss = GroupShuffleSplit(n_splits=1, test_size=0.3, random_state=42)
     train_idx, temp_idx = next(gss.split(df_original, groups=groups))
 
-    df_train = df_original.iloc[train_idx]
-    df_temp  = df_original.iloc[temp_idx]
+    df_train = df_original.iloc[train_idx].reset_index(drop=True)
+    df_temp  = df_original.iloc[temp_idx].reset_index(drop=True)
 
-    # agora divide temp em validação e teste
-    gss2 = GroupShuffleSplit(test_size=0.5, random_state=42)
-    val_idx, test_idx = next(gss2.split(df_temp, groups=df_temp.index))
+    gss2 = GroupShuffleSplit(n_splits=1, test_size=0.5, random_state=42)
+    val_idx, test_idx = next(gss2.split(df_temp, groups=np.arange(len(df_temp))))
 
-    df_val  = df_temp.iloc[val_idx]
-    df_test = df_temp.iloc[test_idx]
+    df_val  = df_temp.iloc[val_idx].reset_index(drop=True)
+    df_test = df_temp.iloc[test_idx].reset_index(drop=True)
 
-    print(f"[OK] Treino: {len(df_train)}")
-    print(f"[OK] Validação: {len(df_val)}")
-    print(f"[OK] Teste: {len(df_test)}")
+    print(f"[OK] Treino:    {len(df_train)} pares → {len(df_train)*2} textos")
+    print(f"[OK] Validação: {len(df_val)}  pares → {len(df_val)*2} textos")
+    print(f"[OK] Teste:     {len(df_test)} pares → {len(df_test)*2} textos")
 
     return df_train, df_val, df_test
 
@@ -361,13 +359,18 @@ df_original = carregarDados(NOMEARQUIVO)
 
 if df_original is not None:
 
-    # SPLIT CORRETO (ANTES DE TUDO)
+    # SPLIT primeiro (nos pares originais)
     df_train, df_val, df_test = separarDados(df_original)
 
-    # montar datasets
+    # Montar long-format depois
     dados_train = montarDataset(df_train)
     dados_val = montarDataset(df_val)
     dados_test = montarDataset(df_test)
+
+    # prepararDados: fit só no treino, transform nos demais
+    dados_train, le = prepararDados(dados_train, le=None)
+    dados_val, _  = prepararDados(dados_val, le=le)
+    dados_test, _  = prepararDados(dados_test, le=le)
 
     # =======================================================
     # 3º ANÁLISE GRÁFICA DOS DADOS
