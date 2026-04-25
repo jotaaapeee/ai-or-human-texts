@@ -30,8 +30,6 @@ NOMEMODELO       = "detectorIA.pickle"
 NOME_VETORIZADOR = "vetorizador.pickle"
 NOME_ENCODER     = "labelEncoder.pickle"
 
-N_TREINO = 30_000 # numero de linhass do treino, mudar de acordo com o hardware
-
 def contextualizarDataset():
     print("="*60)
     print("CONTEXTUALIZAÇÃO DO DATASET")
@@ -342,6 +340,49 @@ def validarTexto(modelo, vetorizador, le, textos):
 
     return labels
 
+def documentarVies(df_original, MAX_CHARS):
+    print("="*60)
+    print("ANÁLISE DE VIÉS DO DATASET")
+    print("="*60)
+    
+    print("""
+        LIMITAÇÃO IDENTIFICADA: Viés de Estilo, não de Autoria
+
+        Este modelo atingiu ~99.97% de acurácia, porém isso NÃO
+        reflete capacidade real de detectar textos gerados por IA.
+
+        CAUSA RAIZ:
+        O dataset apresenta dois vieses estruturais distintos:
+
+        1. VIÉS DE COMPRIMENTO
+        - Textos de IA: média de 1250 chars
+        - Textos humanos: média de 2350 chars
+        - Mitigação aplicada: truncamento em {limite} chars
+            (percentil 75 dos textos de IA)
+
+        2. VIÉS DE ESTILO (principal, não mitigável por limpeza)
+        - IA usa vocabulário formal: 'additionally', 'ultimately',
+            'essential', 'potential', 'provide'
+        - Humanos usam vocabulário coloquial: 'because', 'they',
+            'you', 'do', 'good', 'want'
+        
+        Coeficientes mais discriminativos (Regressão Logística):
+        - 'because' → coef=+8.24  (forte indicador de Human)
+        - 'they'    → coef=+5.30  (forte indicador de Human)
+        - 'of'      → coef=-4.84  (forte indicador de AI)
+        - 'and'     → coef=-4.79  (forte indicador de AI)
+
+        CONSEQUÊNCIA PRÁTICA:
+        O modelo classifica com base no ESTILO DE ESCRITA, não na
+        autoria real. Um humano escrevendo formalmente seria
+        classificado como IA, e vice-versa.
+
+        RECOMENDAÇÃO:
+        Para um detector robusto, utilizar datasets com controle
+        de domínio e registro linguístico, como HC3, RAID ou
+        TuringBench.
+        """.format(limite=MAX_CHARS))
+
 # =======================================================
 # 0º CONTEXTUALIZAÇÃO DO DATASET
 # =======================================================
@@ -422,6 +463,8 @@ if df_original is not None:
 
     print("\n=== TESTE FINAL ===")
     avaliarListaModelos([("Melhor Modelo", melhorModelo)], x_test, y_test, le)
+
+    documentarVies(df_original, MAX_CHARS)
 
     # =======================================================
     # 7º IMPLANTAÇÃO DO MODELO
