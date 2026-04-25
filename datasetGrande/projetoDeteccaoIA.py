@@ -142,6 +142,7 @@ def limparTexto(texto):
     if not isinstance(texto, str):
         return ""
     texto = texto.strip()
+    texto = texto[:MAX_CHARS]
     texto = texto.lower()
     texto = re.sub(r"http\S+|www\S+", "", texto) # remove URLs
     texto = re.sub(r"[^a-záéíóúãõâêîôûàèìòùç\s]", " ", texto) # só letras
@@ -353,6 +354,11 @@ contextualizarDataset()
 
 df_original = carregarDados(NOMEARQUIVO)
 
+limite = int(df_original['ai_text'].str.len().quantile(0.75))  # ~1505
+print(f"Truncando textos em {limite} chars")
+
+MAX_CHARS = limite  # substitui o valor fixo
+
 # =======================================================
 # 2º TRATAMENTO DE DADOS
 # =======================================================
@@ -399,8 +405,8 @@ if df_original is not None:
     # features (fit só no treino!)
     x_train, y_train, vetorizador = extrairFeatures(dados_train)
 
-    x_val  = vetorizador.transform(dados_val["text_limpo"])
-    y_val  = dados_val["label"]
+    x_val = vetorizador.transform(dados_val["text_limpo"])
+    y_val = dados_val["label"]
 
     x_test = vetorizador.transform(dados_test["text_limpo"])
     y_test = dados_test["label"]
