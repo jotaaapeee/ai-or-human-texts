@@ -1,6 +1,60 @@
 import pandas as pd
 from collections import Counter
 import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+import numpy as np
+
+def carregarDados(nomeArquivo):
+    try:
+        print(f"[INFO] Lendo Parquet '{nomeArquivo}' (colunas: human_text, ai_text)...")
+        df = pd.read_parquet(nomeArquivo,
+                             columns=["human_text", "ai_text"],
+                             engine="pyarrow")
+        print(f"[OK] Parquet carregado: {len(df)} linhas")
+
+        return df
+
+    except Exception as e:
+        print(f"[ERRO] Não foi possível carregar os dados: {e}")
+        print("[DICA] Instale o engine: pip install pyarrow")
+        return None
+    
+
+df_original = carregarDados("model_training_dataset.parquet")
+
+limite = int(df_original['ai_text'].str.len().quantile(0.75))  # ~1505
+print(f"Truncando textos em {limite} chars")
+
+MAX_CHARS = limite  # substitui o valor fixo
+
+# pega uma amostra pequena pra ser rápido
+amostra_ai    = df_original['ai_text'].str.strip().str[:MAX_CHARS].str.lower().fillna('').tolist()[:5000]
+amostra_human = df_original['human_text'].str.strip().str[:MAX_CHARS].str.lower().fillna('').tolist()[:5000]
+
+textos = amostra_ai + amostra_human
+labels = [0]*5000 + [1]*5000
+
+vec = TfidfVectorizer(max_features=500, ngram_range=(1,1))
+X = vec.fit_transform(textos)
+
+lr = LogisticRegression(max_iter=500)
+lr.fit(X, labels)
+
+# palavras mais discriminativas
+feature_names = vec.get_feature_names_out()
+coefs = lr.coef_[0]
+
+top_ai    = np.argsort(coefs)[:20]   # coef negativo = AI
+top_human = np.argsort(coefs)[-20:]  # coef positivo = Human
+
+print("=== PALAVRAS QUE MAIS INDICAM AI ===")
+for i in top_ai:
+    print(f"  {feature_names[i]:20s} coef={coefs[i]:.3f}")
+
+print("\n=== PALAVRAS QUE MAIS INDICAM HUMAN ===")
+for i in top_human:
+    print(f"  {feature_names[i]:20s} coef={coefs[i]:.3f}")
 
 df = pd.read_parquet("model_training_dataset.parquet", engine="pyarrow")
 
@@ -64,3 +118,5 @@ print("\nAI - últimos chars mais comuns:")
 print(ai_ends.value_counts().head(10))
 print("\nHuman - últimos chars mais comuns:")
 print(human_ends.value_counts().head(10))
+
+
