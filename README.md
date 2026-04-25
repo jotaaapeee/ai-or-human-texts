@@ -85,10 +85,3 @@ Isso indica que o modelo pode não generalizar bem para cenários reais.
 - O problema está mais relacionado ao dataset do que à complexidade do modelo  
 
 ---
-
-## Produção
-
-O modelo final é salvo utilizando `pickle` e pode ser carregado para inferência em novos textos:
-
-```python
-validarTexto(modelo, vetorizador, encoder, ["Seu texto aqui"])
